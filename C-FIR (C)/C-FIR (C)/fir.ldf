@@ -1,0 +1,164 @@
+
+ARCHITECTURE(ADSP-21062)
+
+//
+// ADSP-21062 Memory Map:
+//   ------------------------------------------------
+//   Internal memory  0x0000 0000 to 0x0007 ffff
+//   ------------------------------------------------
+//                    0x0000 0000 to 0x0000 00ff  IOP Regs
+//                    0x0000 0100 to 0x0001 ffff  (reserved)
+//           Block 0  0x0002 0000 to 0x0002 7fff  Normal Word (32/48) Addresses
+//                   (0x0002 0000 to 0x0002 4fff) 48-bit words
+//                   (0x0002 0000 to 0x0002 7fff) 32-bit words
+//           Block 1  0x0002 8000 to 0x0002 ffff  Normal Word (32/48) Addresses
+//                   (0x0002 8000 to 0x0002 cfff) 48-bit words
+//                   (0x0002 8000 to 0x0002 ffff) 32-bit words
+//  alias of Block 1  0x0003 0000 to 0x0003 7fff  Normal Word (32/48) Addresses
+//  alias of Block 1  0x0003 8000 to 0x0003 ffff  Normal Word (32/48) Addresses
+//           Block 0  0x0004 0000 to 0x0004 ffff  Short Word (16) Addresses
+//           Block 1  0x0005 0000 to 0x0005 ffff  Short Word (16) Addresses
+//  alias of Block 1  0x0006 0000 to 0x0006 ffff  Short Word (16) Addresses
+
+//  alias of Block 1  0x0007 0000 to 0x0007 ffff  Short Word (16) Addresses
+//   ------------------------------------------------
+//   Multiproc memory 0x0008 0000 to 0x003f ffff
+//   ------------------------------------------------
+//                    0x0008 0000 to 0x000f ffff  SHARC ID=001 Internal memory
+//                    0x0010 0000 to 0x0017 ffff  SHARC ID=010 Internal memory
+//                    0x0018 0000 to 0x001f ffff  SHARC ID=011 Internal memory
+//                    0x0020 0000 to 0x0027 ffff  SHARC ID=100 Internal memory
+//                    0x0028 0000 to 0x002f ffff  SHARC ID=101 Internal memory
+//                    0x0030 0000 to 0x0037 ffff  SHARC ID=110 Internal memory
+//                    0x0038 0000 to 0x003f ffff  SHARC ID=all Internal memory
+//   ------------------------------------------------
+//   External memory  0x0040 0000 to 0xffff ffff
+//   ------------------------------------------------
+//
+// This architecture file allocates:
+//         Internal 256 words of run-time header in memory block 0
+//                   16 words of initialization code in memory block 0
+//                  16K words of C code space in memory block 0
+//                   8K words of C PM data space in memory block 0
+//                  16K words of C DM data space in memory block 1
+//                   4K words of C heap space in memory block 1
+//                   4K words of C stack space in memory block 1
+
+#ifndef __NO_STD_LIB
+SEARCH_DIR( $ADI_DSP/21k/lib )
+#endif
+
+// The I/O library provides support for printing hexadecimal constants
+// using the "%a" conversion specifier, and for registering alternatives to
+// the default device driver that is supported by the VisualDSP++ simulator
+// and EZ-KIT Lite systems. Those applications that do not require this
+// functionality may define the macro __LIBIO_LITE which will select an
+// alternative I/O library and lead to reduced code occupancy.
+
+#ifdef __LIBIO_LITE
+# define LIBIO libio_lite.dlb
+# define LIBIOMT libio_litemt.dlb
+#else
+# define LIBIO libio.dlb
+# define LIBIOMT libiomt.dlb
+#endif
+
+#ifdef _ADI_THREADS
+#ifdef __ADI_LIBEH__
+$LIBRARIES = libehmt.dlb, libcmt.dlb, libdsp.dlb, LIBIOMT;
+#else
+$LIBRARIES = libcmt.dlb, libdsp.dlb, LIBIOMT;
+#endif
+#else
+#ifdef __ADI_LIBEH__
+$LIBRARIES = libeh.dlb, libc.dlb, libdsp.dlb, LIBIO;
+#else
+$LIBRARIES = libc.dlb, libdsp.dlb, LIBIO;
+#endif
+#endif
+
+// Libraries from the command line are included in COMMAND_LINE_OBJECTS.
+$OBJECTS = 060_hdr.doj, $COMMAND_LINE_OBJECTS;
+
+MEMORY
+{
+    seg_rth  { TYPE(PM RAM) START(0x00020000) END(0x000200ff) WIDTH(48) }
+    seg_init { TYPE(PM RAM) START(0x00020100) END(0x0002010f) WIDTH(48) }
+    seg_int_code { TYPE(PM RAM) START(0x00020110) END(0x00020197) WIDTH(48) }
+    seg_pmco { TYPE(PM RAM) START(0x00020198) END(0x00023fff) WIDTH(48) }
+    seg_pmda { TYPE(PM RAM) START(0x00026000) END(0x00027fff) WIDTH(32) }
+
+#ifdef IDDE_ARGS
+#define ARGV_START 0x28000
+    mem_argv { TYPE(DM RAM) START(0x00028000) END(0x000280ff) WIDTH(32) }
+    seg_dmda { TYPE(DM RAM) START(0x00028100) END(0x0002ffff) WIDTH(32) }
+#else
+     seg_dmda { TYPE(DM RAM) START(0x00028000) END(0x0002ffff) WIDTH(32) }
+#endif
+ seg_sram { TYPE(DM RAM) START(0x00400000) END(0xffffffff) WIDTH(32) }
+}
+
+
+
+PROCESSOR P0
+{
+#ifdef IDDE_ARGS
+    RESOLVE(___argv_string, ARGV_START)
+#endif
+    KEEP( _main,___lib_end_of_heap_descriptions )    OUTPUT( $COMMAND_LINE_OUTPUT_FILE )
+
+    SECTIONS
+    {
+        // .text output section
+        seg_rth
+        {
+            INPUT_SECTIONS( $OBJECTS(seg_rth) $LIBRARIES(seg_rth))
+        } >seg_rth
+
+        seg_init
+        {
+            INPUT_SECTIONS( $OBJECTS(seg_init) $LIBRARIES(seg_init))
+        } >seg_init
+
+        seg_int_code
+        {
+            INPUT_SECTIONS( $OBJECTS(seg_int_code) $LIBRARIES(seg_int_code))
+        } >seg_int_code
+
+        seg_pmco
+        {
+            INPUT_SECTIONS( $OBJECTS(seg_pmco) $LIBRARIES(seg_pmco))
+        } >seg_pmco
+
+        seg_pmda
+        {
+            INPUT_SECTIONS( $OBJECTS(seg_pmda) $LIBRARIES(seg_pmda))
+        } >seg_pmda
+
+
+        .bss ZERO_INIT
+        {
+           INPUT_SECTIONS( $OBJECTS(.bss) $LIBRARIES(.bss))
+        } > seg_dmda
+
+
+        seg_dmda
+        {
+            RESERVE(heaps_and_stack, heaps_and_stack_length = 8K)
+            INPUT_SECTIONS( $OBJECTS(seg_dmda) $LIBRARIES(seg_dmda))
+            RESERVE_EXPAND(heaps_and_stack, heaps_and_stack_length)
+            ldf_stack_space = heaps_and_stack;
+            ldf_stack_end = ldf_stack_space + ((heaps_and_stack_length * 4K) / 8K);
+            ldf_stack_length = ldf_stack_end - ldf_stack_space;
+            ldf_heap_space = ldf_stack_end;
+            ldf_heap_end = ldf_heap_space + ((heaps_and_stack_length * 4K) / 8K);
+            ldf_heap_length = ldf_heap_end - ldf_heap_space;
+        } > seg_dmda
+
+        seg_sram
+        {
+            INPUT_SECTIONS($OBJECTS(seg_sram) $LIBRARIES(seg_sram))
+        } > seg_sram
+    }
+}
+
